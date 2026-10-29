@@ -24,8 +24,6 @@ export async function measureMainThreadWork<T>(label: string, action: () => T | 
   let previousCpu = threadCpuUsage();
   let probe: ReturnType<typeof setInterval>;
   let drain: ReturnType<typeof setImmediate>;
-  const types = new Map<number, string>();
-  const stacks = new Map<number, string>();
   const callbacks = new Map<number, { wall: number; cpu: NodeJS.CpuUsage }>();
   const record = (wallMs: number, cpu: NodeJS.CpuUsage) => {
     const cpuMs = (cpu.user + cpu.system) / 1_000;
@@ -48,10 +46,6 @@ export async function measureMainThreadWork<T>(label: string, action: () => T | 
   gc.observe({ entryTypes: ["gc"] });
   const activity = createHook({
     init(_id, type) {
-      if (label === "project config main-thread work") {
-        types.set(_id, type);
-        stacks.set(_id, new Error().stack ?? "");
-      }
       if (type.startsWith("FSREQ")) filesystemRequests++;
       if (!draining && type === "Immediate") yields++;
       if (type === "WORKER") workerEvents++;
@@ -66,13 +60,7 @@ export async function measureMainThreadWork<T>(label: string, action: () => T | 
       const start = callbacks.get(id);
       if (!start) return;
       callbacks.delete(id);
-      const wall = performance.now() - start.wall;
-      record(wall, threadCpuUsage(start.cpu));
-      if (wall > 10 && label === "project config main-thread work") {
-        process.stderr.write(
-          JSON.stringify({ wall, type: types.get(id), stack: stacks.get(id) }) + "\n",
-        );
-      }
+      record(performance.now() - start.wall, threadCpuUsage(start.cpu));
     },
   }).enable();
   const sample = () => {
